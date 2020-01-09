@@ -12,6 +12,7 @@ from utils.utils import build_targets, to_cpu, non_max_suppression
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
+from distiller.modules import Concat
 
 def create_modules(module_defs):
     """
@@ -93,6 +94,7 @@ class Upsample(nn.Module):
 
     def forward(self, x):
         x = F.interpolate(x, scale_factor=self.scale_factor, mode=self.mode)
+        # x = x # F.interpolate(x, scale_factor=self.scale_factor, mode=self.mode)
         return x
 
 
@@ -251,6 +253,7 @@ class Darknet(nn.Module):
             if module_def["type"] in ["convolutional", "upsample", "maxpool"]:
                 x = module(x)
             elif module_def["type"] == "route":
+                # TODO: change to distiller.modules.Concat
                 x = torch.cat([layer_outputs[int(layer_i)] for layer_i in module_def["layers"].split(",")], 1)
             elif module_def["type"] == "shortcut":
                 layer_i = int(module_def["from"])
@@ -261,6 +264,7 @@ class Darknet(nn.Module):
                 yolo_outputs.append(x)
             layer_outputs.append(x)
         yolo_outputs = to_cpu(torch.cat(yolo_outputs, 1))
+        # yolo_outputs = to_cpu(Concat(yolo_outputs, 1))
         return yolo_outputs if targets is None else (loss, yolo_outputs)
 
     def load_darknet_weights(self, weights_path):
