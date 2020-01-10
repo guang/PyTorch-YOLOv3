@@ -12,7 +12,7 @@ from utils.utils import build_targets, to_cpu, non_max_suppression
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
-from distiller.modules import Concat
+from distiller.modules import Concat, EltwiseAdd
 
 def create_modules(module_defs):
     """
@@ -121,6 +121,7 @@ class YOLOLayer(nn.Module):
         self.metrics = {}
         self.img_dim = img_dim
         self.grid_size = 0  # grid size
+        self.concat = Concat(dim=-1)
 
     def compute_grid_offsets(self, grid_size, cuda=True):
         self.grid_size = grid_size
@@ -170,14 +171,8 @@ class YOLOLayer(nn.Module):
         pred_boxes[..., 2] = torch.exp(w.data) * self.anchor_w
         pred_boxes[..., 3] = torch.exp(h.data) * self.anchor_h
 
-        output = torch.cat(
-            (
-                pred_boxes.view(num_samples, -1, 4) * self.stride,
-                pred_conf.view(num_samples, -1, 1),
-                pred_cls.view(num_samples, -1, self.num_classes),
-            ),
-            -1,
-        )
+        output_partial = self.concat(pred_boxes.view(num_samples, -1, 4) * self.stride, pred_conf.view(num_samples, -1, 1))
+        output = self.concat(output_partial, pred_cls.view(num_samples, -1, self.num_classes))
 
         if targets is None:
             return output, 0
@@ -244,6 +239,8 @@ class Darknet(nn.Module):
         self.img_size = img_size
         self.seen = 0
         self.header_info = np.array([0, 0, 0, self.seen, 0], dtype=np.int32)
+        self.concat = Concat(dim=1)
+        self.add = EltwiseAdd(inplace=True)
 
     def forward(self, x, targets=None):
         img_dim = x.shape[2]
@@ -257,14 +254,17 @@ class Darknet(nn.Module):
                 x = torch.cat([layer_outputs[int(layer_i)] for layer_i in module_def["layers"].split(",")], 1)
             elif module_def["type"] == "shortcut":
                 layer_i = int(module_def["from"])
-                x = layer_outputs[-1] + layer_outputs[layer_i]
+                x = self.add(layer_outputs[-1], layer_outputs[layer_i])
             elif module_def["type"] == "yolo":
                 x, layer_loss = module[0](x, targets, img_dim)
                 loss += layer_loss
                 yolo_outputs.append(x)
             layer_outputs.append(x)
-        yolo_outputs = to_cpu(torch.cat(yolo_outputs, 1))
-        # yolo_outputs = to_cpu(Concat(yolo_outputs, 1))
+
+        yolo_outputs_partial = self.concat(yolo_outputs[0], yolo_outputs[1])
+        yolo_outputs = self.concat(yolo_outputs_partial, yolo_outputs[2]).detach()#.cpu()
+        # yolo_outputs = self.concat(*yolo_outputs).detach()#.cpu()
+        # yolo_outputs = to_cpu(torch.cat(yolo_outputs, 1))
         return yolo_outputs if targets is None else (loss, yolo_outputs)
 
     def load_darknet_weights(self, weights_path):
