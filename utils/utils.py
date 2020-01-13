@@ -303,6 +303,7 @@ def build_targets(pred_boxes, pred_cls, target, anchors, ignore_thres):
 
     # Set noobj mask to zero where iou exceeds ignore threshold
     for i, anchor_ious in enumerate(ious.t()):
+        # import pdb; pdb.set_trace()
         noobj_mask[b[i], anchor_ious > ignore_thres, gj[i], gi[i]] = 0
 
     # Coordinates

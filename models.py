@@ -171,8 +171,18 @@ class YOLOLayer(nn.Module):
         pred_boxes[..., 2] = torch.exp(w.data) * self.anchor_w
         pred_boxes[..., 3] = torch.exp(h.data) * self.anchor_h
 
-        output_partial = self.concat(pred_boxes.view(num_samples, -1, 4) * self.stride, pred_conf.view(num_samples, -1, 1))
-        output = self.concat(output_partial, pred_cls.view(num_samples, -1, self.num_classes))
+        # import pdb; pdb.set_trace()
+        # if self.use_exact_dims_for_mythic_onnx_export:
+        if False:
+            pred_boxes = pred_boxes.reshape([num_samples, 147, 4])
+            pred_conf = pred_conf.reshape(num_samples, 147, 1)
+            pred_cls = pred_cls.reshape(num_samples, 147, self.num_classes)
+        else:
+            pred_boxes = pred_boxes.view(num_samples, -1, 4)
+            pred_conf = pred_conf.view(num_samples, -1, 1)
+            pred_cls = pred_cls.view(num_samples, -1, self.num_classes)
+        output_partial = self.concat(pred_boxes * self.stride, pred_conf)
+        output = self.concat(output_partial, pred_cls)
 
         if targets is None:
             return output, 0
@@ -262,9 +272,11 @@ class Darknet(nn.Module):
             layer_outputs.append(x)
 
         yolo_outputs_partial = self.concat(yolo_outputs[0], yolo_outputs[1])
-        yolo_outputs = self.concat(yolo_outputs_partial, yolo_outputs[2]).detach()#.cpu()
+        yolo_outputs = self.concat(yolo_outputs_partial, yolo_outputs[2])#.detach()#.cpu()
         # yolo_outputs = self.concat(*yolo_outputs).detach()#.cpu()
         # yolo_outputs = to_cpu(torch.cat(yolo_outputs, 1))
+        # this is wrong, temp fix to bypass the concat error in the last part
+        # yolo_outputs = self.add(yolo_outputs, yolo_outputs)
         return yolo_outputs if targets is None else (loss, yolo_outputs)
 
     def load_darknet_weights(self, weights_path):
