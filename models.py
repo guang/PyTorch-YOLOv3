@@ -173,16 +173,35 @@ class YOLOLayer(nn.Module):
 
         # import pdb; pdb.set_trace()
         # if self.use_exact_dims_for_mythic_onnx_export:
-        if False:
-            pred_boxes = pred_boxes.reshape([num_samples, 147, 4])
-            pred_conf = pred_conf.reshape(num_samples, 147, 1)
-            pred_cls = pred_cls.reshape(num_samples, 147, self.num_classes)
+
+        # print(pred_boxes.shape, pred_conf.shape, pred_cls.shape)
+        # if False:
+        #     pred_boxes = pred_boxes.reshape([num_samples, 147, 4]) * self.stride
+        #     pred_conf = pred_conf.reshape(num_samples, 147, 1)
+        #     pred_cls = pred_cls.reshape(num_samples, 147, self.num_classes)
+        # else:
+        #     pred_boxes = pred_boxes.view(num_samples, -1, 4) * self.stride
+        #     pred_conf = pred_conf.view(num_samples, -1, 1)
+        #     pred_cls = pred_cls.view(num_samples, -1, self.num_classes)
+        # output = torch.cat((pred_boxes, pred_conf, pred_cls,), -1)
+        # output_partial = self.concat(pred_boxes * self.stride, pred_conf)
+        # output = self.concat(output_partial, pred_cls)
+        if True:
+            output_partial = self.concat(
+                pred_boxes.reshape(num_samples, -1, 4) * self.stride,
+                pred_conf.reshape(num_samples, -1, 1),
+            )
+            output = self.concat(output_partial, pred_cls.reshape(num_samples, -1, self.num_classes))
         else:
-            pred_boxes = pred_boxes.view(num_samples, -1, 4)
-            pred_conf = pred_conf.view(num_samples, -1, 1)
-            pred_cls = pred_cls.view(num_samples, -1, self.num_classes)
-        output_partial = self.concat(pred_boxes * self.stride, pred_conf)
-        output = self.concat(output_partial, pred_cls)
+            output = torch.cat(
+                (
+                    pred_boxes.view(num_samples, -1, 4) * self.stride,
+                    pred_conf.view(num_samples, -1, 1),
+                    pred_cls.view(num_samples, -1, self.num_classes),
+                ),
+                -1,
+            )
+        print(output.shape)
 
         if targets is None:
             return output, 0
